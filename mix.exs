@@ -28,3 +28,4 @@ defmodule Trembita.MixProject do
     ]
   end
 end
+

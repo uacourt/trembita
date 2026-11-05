@@ -1,0 +1,42 @@
+Протокол тестування
+
+tonpa@Sky-M4 trembita % mix test
+Compiling 5 files (.ex)
+13:17:30.164 [info] Starting Trembita ESICS eCourt subsystem on Bandit port 4000...
+13:17:30.173 [info] Running Trembita.Web.Router with Bandit 1.14.1 at 0.0.0.0:4000 (http)
+Running ExUnit with seed: 177956, max_cases: 20
+13:17:30.242 [info] GET /health
+13:17:30.246 [info] Sent 200 in 3ms
+13:17:30.247 [info] POST /api/v1/trembita/ipnp/protocols
+13:17:30.281 [notice] BPE: 01793855850256361000 spawned as #PID<0.1368.0>
+13:17:30.294 [info] Sent 201 in 46ms
+13:17:30.294 [info] POST /api/v1/trembita/ipnp/protocols
+13:17:30.294 [info] Sent 409 in 53µs
+13:17:30.294 [info] POST /api/v1/cases/4ba6a8bb-0772-6e18-af46-6f7e753c6d55/attachments
+13:17:30.353 [notice] BPE: 01793855850256361000 [Flow_1:Activity_Attachments] :reply/:normal ~c"StartEvent_Protocol"
+13:17:30.353 [info] Sent 200 in 59ms
+13:17:30.353 [info] POST /api/v1/cases/4ba6a8bb-0772-6e18-af46-6f7e753c6d55/triage
+13:17:30.400 [notice] BPE: 01793855850256361000 [Flow_2:Activity_Triage] :reply/:normal ~c"Activity_Attachments"
+13:17:30.401 [info] Sent 200 in 47ms
+13:17:30.401 [info] POST /api/v1/ai/process
+13:17:30.448 [notice] BPE: 01793855850256361000 [Flow_3:Activity_AIProcess] :reply/:normal ~c"Activity_Triage"
+13:17:30.449 [info] Sent 202 in 47ms
+13:17:30.449 [info] GET /api/v1/ai/status/1f35b7e6-a3ca-569f-1233-c11142e868ea
+13:17:30.449 [info] Sent 200 in 337µs
+13:17:30.449 [info] POST /api/v1/diia/notifications
+13:17:30.496 [notice] BPE: 01793855850256361000 [Flow_4:Activity_DiiaNotification] :reply/:normal ~c"Activity_AIProcess"
+13:17:30.496 [info] Sent 200 in 46ms
+13:17:30.496 [info] POST /api/v1/diia/statements
+13:17:30.542 [notice] BPE: 01793855850256361000 [Flow_5:Activity_DiiaStatement] :reply/:normal ~c"Activity_DiiaNotification"
+13:17:30.542 [info] Sent 200 in 46ms
+13:17:30.542 [info] GET /api/v1/cases/4ba6a8bb-0772-6e18-af46-6f7e753c6d55
+13:17:30.542 [info] Sent 200 in 33µs
+13:17:30.542 [info] POST /api/v1/cases/4ba6a8bb-0772-6e18-af46-6f7e753c6d55/decision
+13:17:30.589 [notice] BPE: 01793855850256361000 [Flow_6:Activity_JudicialReview] :reply/:normal ~c"Activity_DiiaStatement"
+13:17:30.589 [info] Sent 200 in 46ms
+13:17:30.589 [info] POST /api/v1/diia/payments
+13:17:30.589 [info] Sent 200 in 34µs
+13:17:30.589 [info] POST /api/v1/cases/cd31f315-b1a0-6a2c-915f-b0718ee42425/triage
+13:17:30.589 [info] Sent 422 in 16µs
+Finished in 0.4 seconds (0.00s async, 0.4s sync)
+Result: 3 passed

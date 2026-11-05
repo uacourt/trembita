@@ -12,3 +12,4 @@ config :bpe,
 config :trembita,
   port: 4000,
   opensearch_url: System.get_env("OPENSEARCH_URL", "http://localhost:9200")
+

@@ -1,1112 +1,233 @@
-openapi: 3.1.0
-info:
-  title: ЄСІКС AI eCourt & Trembita Integration API
-  version: 1.0.0
-  description: >
-    Технічні Вимоги до інтерфейсів електронної взаємодії Єдиної судової
-    інформаційно-комунікаційної системи (ЄСІКС) в межах експериментального проєкту
-    опрацювання матеріалів про адміністративні правопорушення у сфері безпеки дорожнього
-    руху (ст. 122(4), 124, 126 ч. 3, 5, ст. 130 КУпАП) з використанням технологій
-    штучного інтелекту, системи «Трембіта», Д-3, Порталу Дія та ЄДРСР.
-servers:
-  - url: https://api.court.gov.ua/api/v1
-    description: Виробничий шлюз ЄСІКС (Трембіта / API Gateway)
-  - url: http://localhost:4000/api/v1
-    description: Локальне середовище розробки / прототип
+# ТЕХНІЧНІ ВИМОГИ ТА СИСТЕМНИЙ АНАЛІЗ ПІДСИСТЕМИ ШТУЧНОГО ІНТЕЛЕКТУ ЄСІКС ДЛЯ ОПРАЦЮВАННЯ СПРАВ ПРО АДМІНІСТРАТИВНІ ПРАВОПОРУШЕННЯ: КЕЙС ЕКСПЕРИМЕНТАЛЬНОГО ПРОЄКТУ «AI eCOURT»
 
-paths:
-  /trembita/ipnp/protocols:
-    post:
-      summary: Прийом протоколу про адміністративне правопорушення з ІПНП Нацполіції
-      description: >
-        Шлюзовий ендпойнт для прийому структурованих відомостей протоколу через
-        систему електронної взаємодії «Трембіта» (SEVDEIR/X-Road). Здійснює формато-логічний
-        контроль, перевірку на дублювання за серією/номером, збагачення РНОКПП (за наявності)
-        та ініціацію створення облікової картки справи в Д-3.
-      operationId: receivePoliceProtocol
-      tags:
-        - Trembita / IPNP Inbound
-      parameters:
-        - $ref: '#/components/parameters/X-Road-Client'
-        - $ref: '#/components/parameters/X-Road-Service'
-        - $ref: '#/components/parameters/X-Road-UserId'
-        - $ref: '#/components/parameters/X-Road-Id'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PoliceProtocolPayload'
-      responses:
-        '201':
-          description: Протокол успішно зареєстровано, створено облікову картку в Д-3
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CaseRegistrationResponse'
-        '400':
-          description: Відомості не відповідають узгодженому формату (Альтернативний потік 1)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '409':
-          description: Протокол з такою серією та номером уже надходив (Альтернативний потік 2)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DuplicateProtocolResponse'
-        '502':
-          description: Помилка електронної взаємодії між системами (Альтернативний потік 10)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+**Максим Сохацький**  
+*Державне підприємство «Інформаційні судові системи» Державної судової адміністрації України*  
+*Національний технічний університет України «Київський політехнічний інститут імені Ігоря Сікорського»*  
 
-  /cases/{case_id}/attachments:
-    post:
-      summary: Завантаження сканованих паперових матеріалів канцелярією суду
-      description: >
-        Реєстрація та долучення електронних скан-копій паперових матеріалів справи
-        (протокол-чек, схема ДТП, пояснення) працівником канцелярії суду до облікової
-        картки справи в Д-3.
-      operationId: uploadCaseAttachments
-      tags:
-        - Court Clerk & Docketing (D-3)
-      parameters:
-        - name: case_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AttachmentUploadRequest'
-      responses:
-        '200':
-          description: Матеріали успішно долучено до справи
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AttachmentUploadResponse'
-        '404':
-          description: Справу не знайдено в обліковій системі Д-3
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '422':
-          description: Неможливо зіставити матеріали з відомостями протоколу (Альтернативний потік 3)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+**УДК:** 004.415.2:347.99(477)  
+**SCOPUS:** [https://www.scopus.com/authid/detail.uri?authorId=57214352719](https://www.scopus.com/authid/detail.uri?authorId=57214352719)  
+**ORCID:** [https://orcid.org/0000-0001-7127-8796](https://orcid.org/0000-0001-7127-8796)  
 
-  /cases/{case_id}/triage:
-    post:
-      summary: Автоматизований відбір справи за технічними критеріями
-      description: >
-        Перевірка відповідності справи технічним критеріям експериментального проєкту:
-        статті КУпАП (122-4, 124, 126 ч.3/5, 130), наявність верифікованого РНОКПП,
-        громадянство України, вік >= 18 років, суд є активним учасником проєкту.
-      operationId: triageCase
-      tags:
-        - ESICS Core Engine
-      parameters:
-        - name: case_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Справа відповідає критеріям та передається в пайплайн ШІ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TriageSuccessResponse'
-        '422':
-          description: Справа не відповідає критеріям, передача до загального порядку (Альтернативний потік 5)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TriageRejectionResponse'
+---
 
-  /ai/process:
-    post:
-      summary: Ініціація опрацювання матеріалів справи Модулем ШІ ЄСІКС
-      description: >
-        Асинхронний запуск комплексу ШІ: оптичне розпізнавання тексту (OCR), формато-логічний
-        контроль реквізитів, пошук прецедентної практики в ЄДРСР через OpenSearch та
-        генерація структурованого проєкту судового рішення (ст. 283 КУпАП).
-      operationId: triggerAIProcessing
-      tags:
-        - ESICS AI Module
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AIProcessRequest'
-      responses:
-        '202':
-          description: Запит прийнято до черги опрацювання ШІ
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIJobCreatedResponse'
-        '503':
-          description: Модуль ШІ недоступний або таймаут (Альтернативний потік 6)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+### АНОТАЦІЯ
+У статті та супровідній технічній специфікації представлено системний аналіз, нормативне обґрунтування та формалізовані Технічні Вимоги до спеціалізованої підсистеми інтелектуального опрацювання окремих категорій справ про адміністративні правопорушення у сфері забезпечення безпеки дорожнього руху (ст. 122⁴, 124, ч. 3 та 5 ст. 126, ст. 130 КУпАП) у межах модернізації Єдиної судової інформаційно-комунікаційної системи (ЄСІКС). Досліджено архітектуру наскрізної взаємодії між Інформаційним порталом Національної поліції України (ІПНП), підсистемою діловодства суду «Д-3», системою електронної взаємодії державних електронних інформаційних ресурсів «Трембіта» (СЕВ ДЕІР), Єдиним державним реєстром судових рішень (ЄДРСР) та Єдиним державним веб-порталом електронних послуг «Портал Дія». Формалізовано бізнес-процеси за стандартом BPMN 2.0, алгоритм автоматизованого відбору справ (Triage), метрики оптичного розпізнавання тексту (OCR), семантичний пошук прецедентної практики в ЄДРСР через повнотекстовий рушій OpenSearch, а також правовий механізм волевиявлення правопорушника засобами «Дія.Підпис». Наведено порівняльний аналіз інструментів специфікації API, де обґрунтовано застосування формату API Blueprint (APIB) у зв'язці з автономним рендерером Blueprinter на заміну застарілим хмарним сервісам для генерації нормативної технічної документації органів правосуддя.
 
-  /ai/status/{job_id}:
-    get:
-      summary: Отримання статусу та результату опрацювання Модулем ШІ
-      description: Перевірка статусу виконання OCR та генерації проєкту рішення
-      operationId: getAIJobStatus
-      tags:
-        - ESICS AI Module
-      parameters:
-        - name: job_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Проєкт рішення сформовано та валідовано
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIJobStatusResponse'
-        '422':
-          description: Низька розпізнаваність або помилка генерації (Альтернативні потоки 7, 8)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIFailureResponse'
+**Ключові слова:** ЄСІКС, ЄСІТС, Д-3, Трембіта, СЕВ ДЕІР, КУпАП, Штучний Інтелект, OCR, OpenSearch, Портал Дія, Дія.Підпис, ЄДРСР, API Blueprint, Blueprinter, BPMN, BPE, KVS, ETS.
 
-  /diia/notifications:
-    post:
-      summary: Відправка повідомлення правопорушнику в застосунок Дія
-      description: >
-        Передача до Порталу Дія відомостей про опрацювання справи ШІ та встановлення
-        5-денного строку для подання заяви про згоду з обставинами правопорушення.
-      operationId: sendDiiaNotification
-      tags:
-        - Diia Portal Integration
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DiiaNotificationRequest'
-      responses:
-        '200':
-          description: Повідомлення успішно доставлено в застосунок Дія
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/DiiaNotificationResponse'
-        '404':
-          description: Отримувача не знайдено в Дії або не автентифіковано (Альтернативний потік 11)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+---
 
-  /diia/statements:
-    post:
-      summary: Прийом підписаної заяви особи з Порталу Дія
-      description: >
-        Отримання сформованої та підписаної «Дія.Підписом» заяви правопорушника про згоду
-        з обставинами протоколу та розгляд без його участі. Перевірка КЕП та запуск
-        15-денного процесуального таймера для судді.
-      operationId: submitDiiaStatement
-      tags:
-        - Diia Portal Integration
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SignedStatementPayload'
-      responses:
-        '200':
-          description: Заяву верифіковано та долучено до справи в Д-3, статус «Заяву отримано»
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StatementAcceptedResponse'
-        '422':
-          description: Помилка валідації КЕП або невідповідність справи (Альтернативний потік 17)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+### ABSTRACT
+This paper presents the systems analysis, regulatory framework, and formalized Technical Requirements for the artificial intelligence subsystem of the Unified Judicial Information and Telecommunication System of Ukraine (UJICS / ЄСІКС), designed for automated processing of specific administrative road safety offenses (Articles 122⁴, 124, 126 parts 3 & 5, and 130 of the Code of Ukraine on Administrative Offenses). The study formalizes end-to-end interoperability between the National Police Information Portal (IPNP), the court case management system (D-3), the national data exchange gateway "Trembita" (SEVDEIR / X-Road), the Unified State Register of Court Decisions (EDRSR), and the Diia State Services Portal. The business logic is modeled in BPMN 2.0 and executed via Erlang/Elixir BPE engines, incorporating automatic triage screening, OCR validation metrics ($\ge 0.85$), OpenSearch hybrid vector jurisprudence retrieval, and qualified remote e-signature validation ("Diia.Signature"). A comparative analysis of API specification toolchains demonstrates the superiority of API Blueprint (APIB) combined with the Blueprinter standalone renderer for generating vendor-independent judicial documentation.
 
-  /diia/refusals:
-    post:
-      summary: Фіксація відмови або неподання заяви особою у Дії
-      description: >
-        Обробка події натискання «Не подавати заяву» (Альтернативний потік 12) або
-        спливу 5-денного строку (Альтернативний потік 13). Переведення справи на загальний розгляд.
-      operationId: handleDiiaRefusal
-      tags:
-        - Diia Portal Integration
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/StatementRefusalRequest'
-      responses:
-        '200':
-          description: Відмову зафіксовано в журналі подій та картці Д-3
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardAckResponse'
+**Keywords:** UJICS, ESICS, Court Automation, Trembita, X-Road, KUpAP, Artificial Intelligence, OpenSearch, Diia Portal, Diia.Signature, EDRSR, API Blueprint, Blueprinter, BPMN 2.0.
 
-  /cases/{case_id}:
-    get:
-      summary: Отримання повної облікової картки справи для кабінету судді
-      description: >
-        Надання судді/помічнику комплексу матеріалів: протокол, скан-копії, згенерований
-        ШІ проєкт постанови, релевантні прецеденти ЄДРСР, підписана заява особи з Дії.
-      operationId: getJudgeCaseDetails
-      tags:
-        - Judicial Workbench
-      parameters:
-        - name: case_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '200':
-          description: Дані справи для судового розгляду
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JudgeCaseView'
+---
 
-  /cases/{case_id}/decision:
-    post:
-      summary: Ухвалення судового рішення суддею (Підписати / Редагувати / Відхилити)
-      description: >
-        Фіксація процесуальної дії судді: підписання КЕП без змін, коригування
-        мотивувальної частини/санкції в межах КУпАП з підписанням КЕП, або відхилення
-        з мотивацією та поверненням до загального порядку (Альтернативний потік 19).
-      operationId: judgeResolveCase
-      tags:
-        - Judicial Workbench
-      parameters:
-        - name: case_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JudgeDecisionActionRequest'
-      responses:
-        '200':
-          description: Рішення підписано або відхилено, запущено ланцюг публікації та сповіщень
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/JudgeDecisionActionResponse'
-        '409':
-          description: Прострочено 15-денний регламентний термін (попередження) або конфлікт версій
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+## 1. Вступ та контекст модернізації ЄСІКС
 
-  /trembita/ipnp/decisions:
-    post:
-      summary: Передача підписаного судового рішення до ІПНП через Трембіту
-      description: >
-        Експорт постанови суду з КЕП судді та структурованими даними (штраф, позбавлення права)
-        до Інформаційного порталу Нацполіції для внесення в реєстри та виконання.
-      operationId: transmitDecisionToPolice
-      tags:
-        - Trembita / IPNP Outbound
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DecisionToPolicePayload'
-      responses:
-        '200':
-          description: Постанову прийнято ІПНП
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardAckResponse'
+Трансформація судової системи України у відповідності до стандартів Європейського Союзу вимагає переходу від фрагментарної автоматизації окремих судів до інтегрованої моделі цифрового правосуддя. Розпочате впровадження Єдиної судової інформаційно-телекомунікаційної системи (ЄСІТС) та її наступна модернізація до архітектури **ЄСІКС** (відповідно до вимог ISO/IEC/IEEE 42010) спрямовані на подолання критичних проблем: перевантаженості суддів рутинними справами, тривалих строків доставки повісток та паперової тяганини.
 
-  /edrsr/publish:
-    post:
-      summary: Внесення судового рішення до Єдиного державного реєстру судових рішень
-      description: Відправка тексту постанови, КЕП судді та метаданих до ЄДРСР
-      operationId: publishToEDRSR
-      tags:
-        - Registries (EDRSR)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EDRSRPublishRequest'
-      responses:
-        '200':
-          description: Рішення зареєстровано в ЄДРСР
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EDRSRPublishResponse'
+Особливе навантаження на місцеві загальні суди становлять справи про адміністративні правопорушення у сфері безпеки дорожнього руху. Щорічно судами розглядаються сотні тисяч матеріалів за статтями 124 (ДТП без потерпілих) та 130 (керування у стані сп'яніння) КУпАП. Більшість таких справ є типовими, не містять спору про вину при наявності згоди особи, однак вимагають дотримання 15-денного процесуального строку, ручного заповнення реквізитів постанови та паперової пересилки копій до органів поліції.
 
-  /diia/decisions:
-    post:
-      summary: Передача відомостей про судове рішення та платіжних реквізитів у Дію
-      description: >
-        Надсилання тексту постанови, резолютивної частини та платіжних реквізитів
-        для сплати штрафу правопорушником у мобільному застосунку Дія.
-      operationId: pushDecisionToDiia
-      tags:
-        - Diia Portal Integration
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/DiiaDecisionNoticeRequest'
-      responses:
-        '200':
-          description: Постанову відображено в кабінеті Дії
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardAckResponse'
+Запровадження експериментального проєкту **«AI eCourt»** передбачає делегування технічного опрацювання матеріалів Модулю ШІ ЄСІКС з одночасним безумовним збереженням виключного процесуального права ухвалення судового рішення за суддею (п. 1 ст. 129 Конституції України).
 
-  /diia/payments:
-    post:
-      summary: Отримання підтвердження сплати штрафу з платіжного сервісу Дії
-      description: >
-        Callback-повідомлення про здійснення оплати штрафу через інтегрований
-        платіжний сервіс Дії та фіксація виконання постанови в Д-3.
-      operationId: receiveFinePaymentConfirmation
-      tags:
-        - Payment & Execution
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PaymentConfirmationPayload'
-      responses:
-        '200':
-          description: Відомості про сплату штрафу внесено до облікової картки
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardAckResponse'
-        '400':
-          description: Помилка або недійсний чек платіжної транзакції (Альтернативний потік 22)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
+---
 
-  /ai/feedback:
-    post:
-      summary: Збереження знеособленого запису для моніторингу та оцінки якості ШІ
-      description: >
-        Фіксація початкового проєкту ШІ, підсумкової редакції судді, дій судді та версії
-        моделі ШІ без персональних даних для безперервного покращення якості моделей.
-      operationId: storeAIEvaluationFeedback
-      tags:
-        - AI Quality & Evaluation
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AIEvaluationFeedbackPayload'
-      responses:
-        '201':
-          description: Знеособлений метричний запис збережено
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/StandardAckResponse'
+## 2. Нормативно-правове підґрунтя та таксономія сервісів
 
-components:
-  parameters:
-    X-Road-Client:
-      name: X-Road-Client
-      in: header
-      required: true
-      schema:
-        type: string
-        example: SEVDEIR/GOV/34614292/90_ElectronicCourt_prod
-    X-Road-Service:
-      name: X-Road-Service
-      in: header
-      required: true
-      schema:
-        type: string
-        example: SEVDEIR/GOV/26255795/16_EDRSR_prod
-    X-Road-UserId:
-      name: X-Road-UserId
-      in: header
-      required: true
-      schema:
-        type: string
-        example: UA12345678
-    X-Road-Id:
-      name: X-Road-Id
-      in: header
-      required: true
-      schema:
-        type: string
-        example: 4a2b9f3d-51a1-4322-92fe-b58f844b2f1e
+Розробка технічних вимог спирається на діюче законодавство та профільні стандарти:
+1. **Кодекс України про адміністративні правопорушення (КУпАП):** статті 122⁴, 124, 126 (ч. 3, 5), 130, 247 (обставини, що виключають провадження), 256 (зміст протоколу), 277 (строки розгляду), 283 (зміст постанови по справі).
+2. **Закон України «Про судоустрій і статус суддів»:** ст. 15-1 (Єдина судова інформаційно-комунікаційна система).
+3. **Закон України «Про електронну ідентифікацію та електронні довірчі послуги»:** регламентує використання кваліфікованих електронних підписів (КЕП) та віддаленого підпису «Дія.Підпис» (Smart-ID / eIDAS compliance).
+4. **Закон України «Про захист персональних даних»:** імперативна заборона використання незнеособлених персональних даних громадян для навчання генеративних моделей ШІ.
+5. **Таксономія сервісів ЄСІКС (ДП «ІСС»):**
+   * **I. Інфраструктурні сервіси:** PKI, EUDI, ABAC/IAM, BPMN, HL7, SCHEMA, XFORMS;
+   * **II. Судочинство та діловодство:** D-3, Авторозподіл, Модуль ШІ, Електронний кабінет судді;
+   * **III. Інтероперабельність:** Шлюз «Трембіта» (СЕВ ДЕІР), Шлюз Порталу Дія, Шлюз ЄІС МВС.
 
-  schemas:
-    PoliceProtocolPayload:
-      type: object
-      required:
-        - protocol_series
-        - protocol_number
-        - violation_datetime
-        - article
-        - part
-        - police_department_code
-        - court_code
-        - offender
-      properties:
-        protocol_series:
-          type: string
-          example: 'ААБ'
-        protocol_number:
-          type: string
-          example: '123456'
-        violation_datetime:
-          type: string
-          format: date-time
-          example: '2026-11-04T10:15:00+02:00'
-        article:
-          type: string
-          enum: ['122-4', '124', '126', '130']
-          example: '124'
-        part:
-          type: integer
-          nullable: true
-          example: null
-        police_department_code:
-          type: string
-          example: 'PATROL_KYIV_01'
-        court_code:
-          type: string
-          example: '2604'
-        offender:
-          $ref: '#/components/schemas/OffenderInfo'
-        vehicle:
-          type: object
-          properties:
-            brand:
-              type: string
-              example: 'Toyota Camry'
-            plate_number:
-              type: string
-              example: 'AA1234BB'
+---
 
-    OffenderInfo:
-      type: object
-      required:
-        - full_name
-        - birth_date
-        - citizenship
-      properties:
-        full_name:
-          type: string
-          example: 'Шевченко Петро Олексійович'
-        birth_date:
-          type: string
-          format: date
-          example: '1995-05-12'
-        rnokpp:
-          type: string
-          pattern: '^[0-9]{10}$'
-          nullable: true
-          example: '3123456789'
-        citizenship:
-          type: string
-          example: 'Україна'
-        address:
-          type: string
-          example: 'м. Київ, вул. Хрещатик, 10, кв. 5'
+## 3. Модель суб'єктів, систем та потоків даних
 
-    CaseRegistrationResponse:
-      type: object
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        case_number:
-          type: string
-          example: '757/12345/26-п'
-        d3_docket_id:
-          type: string
-          example: 'D3-2026-98124'
-        status:
-          type: string
-          example: 'REGISTERED'
-        created_at:
-          type: string
-          format: date-time
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Officer as Патрульний поліцейський
+    participant IPNP as ІПНП Нацполу
+    participant Trembita as Шлюз «Трембіта»
+    participant ESICS as ЄСІКС (Д-3 / BPE)
+    participant AI as Модуль ШІ ЄСІКС
+    participant OS as OpenSearch (ЄДРСР)
+    participant Diia as Портал / Застосунок Дія
+    actor Citizen as Правопорушник
+    actor Judge as Суддя
 
-    DuplicateProtocolResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: 'DUPLICATE'
-        existing_case_id:
-          type: string
-          format: uuid
-        message:
-          type: string
-          example: 'Відомості з протоколу серії ААБ № 123456 вже надійшли раніше'
+    Officer->>IPNP: Складання протоколу на планшеті + паперовий чек
+    IPNP->>Trembita: SOAP/REST пакет протоколу (збагачений РНОКПП)
+    Trembita->>ESICS: POST /api/v1/trembita/ipnp/protocols
+    Note over ESICS: Перевірка валідності та дублікатів (ETS)
+    ESICS->>ESICS: Створення картки Д-3 + BPE Spawn
+    ESICS->>AI: Запит на розпізнавання (скани канцелярії)
+    AI->>OS: Векторний + BM25 пошук практики ЄДРСР
+    OS-->>AI: Релевантні постанови (топ-3)
+    AI-->>ESICS: Проєкт постанови (ст. 283 КУпАП)
+    ESICS->>Diia: POST /api/v1/diia/notifications (таймер 5 днів)
+    Diia->>Citizen: Push-сповіщення: матеріали справи + практика
+    Citizen->>Diia: Згода з обставинами + «Дія.Підпис»
+    Diia->>ESICS: POST /api/v1/diia/statements
+    Note over ESICS: Верифікація КЕП + Процесуальний таймер 15 днів
+    ESICS->>Judge: Сповіщення в Кабінеті судді (досьє справи)
+    Judge->>ESICS: Резолюція (Підписати КЕП / Змінити / Відхилити)
+    par Виконання та публікація
+        ESICS->>Trembita: Передача постанови до ІПНП
+        ESICS->>OS: Внесення судового рішення до ЄДРСР
+        ESICS->>Diia: Постанова + реквізити штрафу
+    end
+    Citizen->>Diia: Оплата штрафу через інтегрований платіж
+    Diia->>ESICS: POST /api/v1/diia/payments
+    ESICS->>ESICS: Фіксація виконання постанови в Д-3
+```
 
-    AttachmentUploadRequest:
-      type: object
-      required:
-        - files
-      properties:
-        files:
-          type: array
-          items:
-            type: object
-            required:
-              - file_name
-              - document_type
-              - content_base64
-            properties:
-              file_name:
-                type: string
-                example: 'scan_protocol_receipt.pdf'
-              document_type:
-                type: string
-                enum: ['PROTOCOL_RECEIPT', 'ACCIDENT_SCHEME', 'EXPLANATION', 'TEST_REPORT']
-              content_base64:
-                type: string
+---
 
-    AttachmentUploadResponse:
-      type: object
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        attached_count:
-          type: integer
-          example: 2
-        status:
-          type: string
-          example: 'ATTACHED'
+## 4. Специфікація функціональних вимог
 
-    TriageSuccessResponse:
-      type: object
-      properties:
-        eligible:
-          type: boolean
-          example: true
-        criteria_checks:
-          type: object
-          properties:
-            target_article_valid:
-              type: boolean
-              example: true
-            rnokpp_present:
-              type: boolean
-              example: true
-            citizenship_ua:
-              type: boolean
-              example: true
-            adult_at_offense:
-              type: boolean
-              example: true
-            court_pilot_active:
-              type: boolean
-              example: true
-        next_action:
-          type: string
-          example: 'AI_PROCESSING_TRIGGERED'
+### 4.1. Прийом та дедуплікація протоколів (Шлюз Трембіти / ІПНП)
+* **FR-TR-01:** Шлюз зобов'язаний приймати структуровані запити, підписані електронною печаткою органу поліції через протокол безпеки СЕВ ДЕІР «Трембіта».
+* **FR-TR-02:** Система здійснює формато-логічний контроль обов'язкових полів: серія протоколу, номер, дата правопорушення, стаття КУпАП, ПІБ особи, дата народження, код суду. При порушенні схеми повертається код `400 Bad Request` із описом дефекту (Альтернативний потік 1).
+* **FR-TR-03 (Ідемпотентність):** Перевірка на повторне надходження відомостей за композитним ключем `{protocol_series, protocol_number}` через ETS-таблицю `:idempotency_keys`. При збігу — повернення `409 Conflict` без повторної генерації картки Д-3 (Альтернативний потік 2).
 
-    TriageRejectionResponse:
-      type: object
-      properties:
-        eligible:
-          type: boolean
-          example: false
-        reason_code:
-          type: string
-          example: 'MISSING_RNOKPP'
-        description:
-          type: string
-          example: 'У матеріалах відсутній верифікований РНОКПП особи'
-        fallback_action:
-          type: string
-          example: 'GENERAL_LEGAL_PROCEDURE'
+### 4.2. Долучення сканованих матеріалів (Канцелярія суду)
+* **FR-CL-01:** Працівник канцелярії реєструє надходження паперових матеріалів, проводить оптичне сканування (роздільна здатність $\ge 300\text{ DPI}$, 24-бітний колір/градації сірого) та долучає PDF-копії до облікової картки Д-3.
+* **FR-CL-02:** У разі неможливості верифікації паперового роздрукованого «чека» з електронним номером протоколу формується інцидент ручного зіставлення (Альтернативний потік 3).
 
-    AIProcessRequest:
-      type: object
-      required:
-        - case_id
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        priority:
-          type: string
-          enum: ['NORMAL', 'HIGH']
-          default: 'NORMAL'
+### 4.3. Автоматизований відбір справи за критеріями (Triage)
+* **FR-TRG-01:** Автоматичний модуль проводить перевірку відповідності:
+  $$\text{Eligible} = (Article \in \{122^4, 124, 126.3, 126.5, 130\}) \land (\text{RNOKPP} \neq \emptyset) \land (\text{Citizenship} = \text{"UA"}) \land (\text{Age} \ge 18) \land (\text{CourtPilot} = \text{true})$$
+* **FR-TRG-02:** У разі невиконання хоча б одного критерію справа автоматично маркується статусом `GENERAL_PROCEDURE` та спрямовується до загального судочинства за правилами КУпАП без залучення ШІ (Альтернативний потік 5).
 
-    AIJobCreatedResponse:
-      type: object
-      properties:
-        job_id:
-          type: string
-          format: uuid
-        case_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          example: 'QUEUED'
+### 4.4. Модуль ШІ: OCR, пошук практики в ЄДРСР та синтез проєкту постанови
+* **FR-AI-01 (OCR & Якість):** Модуль розпізнавання тексту обчислює агреговану метрику впевненості розпізнавання $Q_{ocr} \in [0, 1]$. Якщо $Q_{ocr} < 0.85$, процес ШІ переривається, фіксується перелік нерозпізнаних аркушів, а справа передається судді в загальному порядку (Альтернативний потік 7).
+* **FR-AI-02 (Семантичний пошук ЄДРСР):** Формування векторного ембеддінгу обставин справи розмірністю 768 ознак та виконання гібридного пошуку (k-NN Cosine Similarity + BM25) в OpenSearch за індексом `edrsr_court_decisions` для добору трьох найбільш релевантних правових позицій.
+* **FR-AI-03 (Генерація проєкту):** Синтез проєкту судового рішення відповідно до вимог статті 283 КУпАП: вступна, описова, мотивувальна та резолютивна частини.
+* **FR-AI-04 (Пост-контроль):** Формально-логічна верифікація згенерованого тексту системою правил ЄСІКС:
+  * Санкція суворо відповідає межам статті КУпАП;
+  * Судовий збір розраховано за актуальною ставкою ЗУ «Про судовий збір»;
+  * ПІБ, дата народження та РНОКПП збігаються з первинними даними протоколу.
 
-    AIJobStatusResponse:
-      type: object
-      properties:
-        job_id:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum: ['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']
-        ocr_confidence_score:
-          type: number
-          format: float
-          example: 0.94
-        ai_model_version:
-          type: string
-          example: 'ESICS-AI-KUPAP-v2.4'
-        draft_decision:
-          $ref: '#/components/schemas/DraftDecision'
-        jurisprudence_references:
-          type: array
-          items:
-            $ref: '#/components/schemas/JurisprudenceReference'
+### 4.5. Інтеграція з Порталом Дія
+* **FR-DIA-01:** Передача структурованого повідомлення в мобільний застосунок Дія правопорушника із зазначенням номера судової справи, суті правопорушення, релевантної судової практики та дедлайну для подання заяви ($T_{diia} = 5\text{ днів}$).
+* **FR-DIA-02:** Якщо правопорушник не має верифікованого профілю в Дії, портал повертає помилку `404 Not Found`, після чого справа переходить на розгляд у загальному порядку (Альтернативний потік 11).
+* **FR-DIA-03:** Прийом заяви особи про згоду з обставинами та розгляд без її участі, підписаної «Дія.Підписом» (формат CMS/CAdES). Перевірка дійсності підпису та повноважень особи (Альтернативний потік 17).
+* **FR-DIA-04:** Фіксація натискання «Не подавати заяву» (Альтернативний потік 12) або таймауту 5 днів (Альтернативний потік 13) з автоматичним переведенням на загальний розгляд.
 
-    AIFailureResponse:
-      type: object
-      properties:
-        job_id:
-          type: string
-          format: uuid
-        error_code:
-          type: string
-          enum: ['OCR_CONFIDENCE_LOW', 'INCONSISTENT_FACTS', 'GENERATION_ERROR']
-        reason:
-          type: string
-          example: 'Рівень технічної розпізнаваності (0.61) нижче встановленого порогу (0.85)'
-        documents_failed:
-          type: array
-          items:
-            type: string
-            example: 'ACCIDENT_SCHEME'
+### 4.6. Робоче місце судді
+* **FR-JDG-01:** Запуск обов'язкового процесуального таймера тривалістю $T_{judge} = 15\text{ календарних днів}$ з моменту надходження заяви.
+* **FR-JDG-02:** Надання судді інтегрованого досьє: скан-копії, електронний протокол, заява з Дії, релевантна практика ЄДРСР та підготовлений ШІ проєкт постанови.
+* **FR-JDG-03:** Надання судді виключного вибору трьох процесуальних дій:
+  1. `SIGN_AS_IS`: підписання проєкту особистим КЕП судді;
+  2. `EDIT_AND_SIGN`: редагування тексту постанови (без права зміни особи та фабули правопорушення) з накладенням КЕП;
+  3. `REJECT`: відхилення проєкту з обов'язковим зазначенням мотивованої причини, накладенням КЕП судді та переведенням до загального розгляду (Альтернативний потік 19).
 
-    DraftDecision:
-      type: object
-      required:
-        - court_name
-        - judge_name
-        - intro
-        - circumstances
-        - resolution
-      properties:
-        court_name:
-          type: string
-          example: 'Печерський районний суд міста Києва'
-        judge_name:
-          type: string
-          example: 'Іванов І. І.'
-        intro:
-          type: string
-        circumstances:
-          type: string
-        resolution:
-          type: object
-          properties:
-            sanction_type:
-              type: string
-              enum: ['FINE', 'LICENSE_REVOCATION', 'ADMIN_ARREST', 'DISMISSAL']
-            fine_amount_uah:
-              type: number
-              example: 850.00
-            court_fee_uah:
-              type: number
-              example: 605.60
-            revocation_months:
-              type: integer
-              nullable: true
-              example: null
-            dismissal_ground:
-              type: string
-              nullable: true
+### 4.7. Виконання та реєстри
+* **FR-EX-01:** Автоматичне внесення підписаної КЕП постанови до ЄДРСР із присвоєнням реєстраційного номера.
+* **FR-EX-02:** Експорт постанови через Трембіту до ІПНП Нацполіції для внесення відміток про позбавлення прав або накладення штрафу.
+* **FR-EX-03:** Відправка пуш-сповіщення у застосунок Дія з можливістю безпосередньої сплати штрафу через інтегрований платіжний сервіс.
+* **FR-EX-04:** Обробка платіжного вебхука та фіксація статусу `EXECUTED_PAID` у картці Д-3.
 
-    JurisprudenceReference:
-      type: object
-      properties:
-        edrsr_cause_number:
-          type: string
-          example: '757/4512/25-п'
-        judgment_date:
-          type: string
-          format: date
-          example: '2025-08-14'
-        similarity_score:
-          type: number
-          example: 0.89
-        relevance_summary:
-          type: string
-          example: 'Аналогічні обставини ДТП на перехресті при неподанні сигналу повороту'
+### 4.8. Контур зворотного зв'язку ШІ (ML Feedback Loop) та деперсоналізація
+* **FR-ML-01:** Заборонено зберігання персональних даних (ПІБ, РНОКПП, номери авто, адреси) у таблицях оцінювання ШІ.
+* **FR-ML-02:** Фіксація виключно нормалізованих метрик: стаття КУпАП, дія судді, коефіцієнт дистанції редагування Левенштейна:
+  $$\text{EditDistanceRatio} = \frac{D(Text_{orig}, Text_{final})}{\max(|Text_{orig}|, |Text_{final}|)}$$
+  версія моделі ШІ та хеш-суми документів.
 
-    DiiaNotificationRequest:
-      type: object
-      required:
-        - case_id
-        - rnokpp
-        - deadline_days
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        rnokpp:
-          type: string
-          example: '3123456789'
-        deadline_days:
-          type: integer
-          default: 5
-        message_title:
-          type: string
-          example: 'Судова справа про адміністративне правопорушення'
+---
 
-    DiiaNotificationResponse:
-      type: object
-      properties:
-        delivery_id:
-          type: string
-          format: uuid
-        delivered_at:
-          type: string
-          format: date-time
-        deadline_at:
-          type: string
-          format: date-time
+## 5. Специфікація нефункціональних вимог
 
-    SignedStatementPayload:
-      type: object
-      required:
-        - case_id
-        - case_number
-        - rnokpp
-        - agreement_with_circumstances
-        - consent_for_absence_trial
-        - diia_signature_cms_base64
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        case_number:
-          type: string
-          example: '757/12345/26-п'
-        rnokpp:
-          type: string
-          example: '3123456789'
-        agreement_with_circumstances:
-          type: boolean
-          example: true
-        consent_for_absence_trial:
-          type: boolean
-          example: true
-        diia_signature_cms_base64:
-          type: string
-          description: Кваліфікований електронний підпис «Дія.Підпис» у форматі CMS/CAdES
+\begin{table}[htbp]
+\centering
+\caption{Матриця нефункціональних вимог системи ЄСІКС AI eCourt}
+\footnotesize
+\begin{tabular}{@{} l p{4.0cm} p{9.0cm} @{}}
+\toprule
+\textbf{Категорія} & \textbf{Параметр} & \textbf{Цільове значення та регламент} \\
+\midrule
+NFR-01 & Пропускна спроможність & Обробка $\ge 500$ одночасних запитів до шлюзу Трембіти без деградації часу відповіді ($p99 \le 50\text{ мс}$). \\
+NFR-02 & Доступність (SLA) & Рівень готовності сервісу $\ge 99.95\%$ у режимі $24/7/365$. \\
+NFR-03 & In-Memory продуктивність & Використання конкурентних таблиць ETS (`write_concurrency: true`) замість стороннього Redis — читання за $\le 1\text{ мкс}$. \\
+NFR-04 & Стійкість процесів BPE & Персистентність ланцюжків переходів у KVS (Mnesia/RocksDB); автоматичний перезапуск упалих воркерів під OTP супервізором. \\
+NFR-05 & Безпека каналу зв'язку & Взаємна TLS-автентифікація (mTLS) на шлюзі безпеки Трембіти з обов'язковою валідацією сертифікатів за протоколом OCSP. \\
+NFR-06 & Конфіденційність & Повна відповідність вимогам КСЗІ з рівнем гарантій Г-2 та регламенту захисту персональних даних GDPR/ЗУ. \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-    StatementAcceptedResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: 'STATEMENT_ACCEPTED'
-        judge_notification_sent:
-          type: boolean
-          example: true
-        judicial_timer_days:
-          type: integer
-          example: 15
+---
 
-    StatementRefusalRequest:
-      type: object
-      required:
-        - case_id
-        - reason
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        reason:
-          type: string
-          enum: ['USER_DECLINED', 'TIMEOUT_EXPIRED']
+## 6. Порівняльний аналіз інструментарію генерації документації API
 
-    JudgeCaseView:
-      type: object
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        case_number:
-          type: string
-        status:
-          type: string
-        protocol:
-          $ref: '#/components/schemas/PoliceProtocolPayload'
-        statement:
-          $ref: '#/components/schemas/SignedStatementPayload'
-        draft_decision:
-          $ref: '#/components/schemas/DraftDecision'
-        relevant_practice:
-          type: array
-          items:
-            $ref: '#/components/schemas/JurisprudenceReference'
+У контексті відкритості та інтероперабельності судових сервісів критично важливим є вибір інструментарію специфікації інтерфейсів електронної взаємодії. Традиційно в державних системах (зокрема в ЕСОЗ та ДП «ІСС») специфікації велися у форматі **API Blueprint (APIB)** з використанням платформи Oracle Apiary. Однак через оголошення Oracle про припинення підтримки Apiary (End-of-Life, EoL) постала необхідність науково обґрунтованого вибору локального та автономного генератора документації.
 
-    JudgeDecisionActionRequest:
-      type: object
-      required:
-        - action
-      properties:
-        action:
-          type: string
-          enum: ['SIGN_AS_IS', 'EDIT_AND_SIGN', 'REJECT']
-        edited_text:
-          type: string
-          nullable: true
-        rejection_reason:
-          type: string
-          nullable: true
-        judge_qes_cms_base64:
-          type: string
-          description: КЕП судді
+Досліджено чотири базових інструменти генерації документації API:
 
-    JudgeDecisionActionResponse:
-      type: object
-      properties:
-        decision_id:
-          type: string
-          format: uuid
-        case_id:
-          type: string
-          format: uuid
-        action_recorded:
-          type: string
-        edrsr_dispatch_status:
-          type: string
-          example: 'PENDING'
-        police_dispatch_status:
-          type: string
-          example: 'PENDING'
-        diia_dispatch_status:
-          type: string
-          example: 'PENDING'
+1. **Aglio (Node.js):** Перший масовий генератор APIB з підтримкою тем Olio/Slate. Попри популярність, проєкт перебуває у статусі unmaintained з 2019 року, має застарілий парсер `drafter` і не підтримує сучасні конструкції MSON.
+2. **Api-blueprint-boilerplate:** Набір скриптів з жорсткою прив'язкою до хмари Apiary, що робить його непридатним для ізольованого контуру судової влади.
+3. **Phpdraft (PHP):** Потребує наявності інтерпретатора PHP та системної C++ бібліотеки Drafter, що ускладнює контейнеризацію в середовищах на базі BEAM/Elixir.
+4. **Blueprinter (@funboxteam/blueprinter):** Сучасний рендерер, розроблений командою Funbox на базі семантичного дерева API Elements та актуального парсера Crafter/Drafter.
 
-    DecisionToPolicePayload:
-      type: object
-      required:
-        - case_number
-        - protocol_series
-        - protocol_number
-        - decision_date
-        - sanction
-        - signed_pdf_base64
-      properties:
-        case_number:
-          type: string
-        protocol_series:
-          type: string
-        protocol_number:
-          type: string
-        decision_date:
-          type: string
-          format: date
-        sanction:
-          type: object
-          properties:
-            fine_amount_uah:
-              type: number
-            license_revocation_months:
-              type: integer
-              nullable: true
-        signed_pdf_base64:
-          type: string
+### 6.1. Порівняльна таблиця рендерерів
 
-    EDRSRPublishRequest:
-      type: object
-      required:
-        - case_number
-        - court_code
-        - decision_date
-        - full_text_xml
-        - signature_base64
-      properties:
-        case_number:
-          type: string
-        court_code:
-          type: string
-        decision_date:
-          type: string
-          format: date
-        full_text_xml:
-          type: string
-        signature_base64:
-          type: string
+\begin{table}[htbp]
+\centering
+\caption{Порівняльна характеристика генераторів APIB документації}
+\footnotesize
+\begin{tabular}{@{} l c c c c @{}}
+\toprule
+\textbf{Критерій оцінки} & \textbf{Blueprinter} & \textbf{Aglio} & \textbf{Boilerplate} & \textbf{Phpdraft} \\
+\midrule
+Повна підтримка MSON 2.x & \textbf{Так} & Частково & Залежить від Oracle & Частково \\
+Автономність від хмари Oracle & \textbf{100\%} & 100\% & 0\% & 100\% \\
+Генерація єдиного self-contained HTML & \textbf{Так (вбудовані assets)} & Так & Ні & Ні (потребує CSS) \\
+Інтерактивні блоки «One Of» / Варіанти & \textbf{Так} & Ні & Так (у хмарі) & Ні \\
+Повнотекстовий пошук по API & \textbf{Вбудований} & Обмежений & У хмарі & Відсутній \\
+Інтеграція в CI/CD без додаткових runtime & \textbf{npx / Node.js} & npm & bash/curl & PHP runtime \\
+Відповідність стеку ЄСІКС & \textbf{Висока} & Середня & Низька & Низька \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-    EDRSRPublishResponse:
-      type: object
-      properties:
-        edrsr_id:
-          type: string
-          example: 'EDRSR-2026-1049281'
-        registration_number:
-          type: string
-        registered_at:
-          type: string
-          format: date-time
+### 6.2. Практична реалізація та експорт специфікації
 
-    DiiaDecisionNoticeRequest:
-      type: object
-      required:
-        - case_id
-        - rnokpp
-        - fine_amount
-        - payment_iban
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        rnokpp:
-          type: string
-        fine_amount:
-          type: number
-        court_fee:
-          type: number
-        payment_iban:
-          type: string
-        payment_purpose:
-          type: string
+На виконання вимог стандартизації повну машиночитну специфікацію API підсистеми було експортовано у файл **[ecourt.apib](file:///Users/tonpa/depot/uacourt/trembita/ecourt.apib)** у форматі API Blueprint 1A.
 
-    PaymentConfirmationPayload:
-      type: object
-      required:
-        - case_id
-        - transaction_id
-        - amount_paid
-        - paid_at
-        - payment_system
-      properties:
-        case_id:
-          type: string
-          format: uuid
-        transaction_id:
-          type: string
-          example: 'TRX-94810284'
-        amount_paid:
-          type: number
-          example: 850.00
-        paid_at:
-          type: string
-          format: date-time
-        payment_system:
-          type: string
-          example: 'DIIA_PAY_PORTMONE'
+За допомогою Blueprinter скомпільовано повністю автономний, інтерактивний HTML-документ:
+```bash
+npx @funboxteam/blueprinter -i ecourt.apib -o index.html
+```
+Отриманий файл **[index.html](file:///Users/tonpa/depot/uacourt/trembita/index.html)** (розміром 757 КБ) містить усе необхідне оформлення, скрипти пошуку, навігацію та приклади запитів/відповідей, не потребуючи підключення до зовнішніх CDN або серверів Oracle.
 
-    AIEvaluationFeedbackPayload:
-      type: object
-      required:
-        - ai_model_version
-        - judge_action
-        - original_draft_hash
-        - final_decision_hash
-      properties:
-        case_id_anonymized:
-          type: string
-          example: 'anon_f4e19b'
-        article:
-          type: string
-          example: '124'
-        ai_model_version:
-          type: string
-          example: 'ESICS-AI-KUPAP-v2.4'
-        judge_action:
-          type: string
-          enum: ['SIGN_AS_IS', 'EDIT_AND_SIGN', 'REJECT']
-        edit_distance_ratio:
-          type: number
-          example: 0.04
-        original_draft_hash:
-          type: string
-        final_decision_hash:
-          type: string
+---
 
-    StandardAckResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          example: 'OK'
-        timestamp:
-          type: string
-          format: date-time
+## 7. Висновки
 
-    ErrorResponse:
-      type: object
-      required:
-        - error_code
-        - message
-      properties:
-        error_code:
-          type: string
-          example: 'VALIDATION_FAILED'
-        message:
-          type: string
-          example: 'Відомості не відповідають узгодженому формату обміну'
-        details:
-          type: array
-          items:
-            type: string
+1. Розроблено та формалізовано повний комплекс Технічних Вимог до підсистеми ЄСІКС «AI eCourt», що охоплює всі стадії розгляду справ про адміністративні правопорушення за статтями 122⁴, 124, 126 (ч. 3, 5) та 130 КУпАП.
+2. Архітектурне поєднання рушія бізнес-процесів **BPE** (оркестрація BPMN) та **KVS** (персистентність) у середовищі Elixir/OTP забезпечує надійність промислового рівня з автоматичним контролем 5-денного строку волевиявлення в Дії та 15-денного процесуального строку для судді.
+3. Рішення **«ETS замість Redis»** усуває мережевий оверхед та зовнішні точки відмови, забезпечуючи субмілісекундну дедуплікацію вхідних протоколів поліції через Трембіту та миттєвий доступ до карток справ.
+4. Науково доведено та практично реалізовано міграцію API-документації на відкритий формат **API Blueprint** із використанням генератора **Blueprinter**, що забезпечує незалежність судової інформаційної інфраструктури від пропрієтарних сервісів Oracle.
+
+---
+
+## 8. Список використаних джерел
+
+1. Кодекс України про адміністративні правопорушення. Відомості Верховної Ради УРСР, 1984, додаток до № 51, ст. 1122.
+2. Закон України «Про судоустрій і статус суддів» від 02.06.2016 № 1402-VIII.
+3. Закон України «Про електронну ідентифікацію та електронні довірчі послуги» від 05.10.2017 № 2155-VIII.
+4. Положення про порядок функціонування окремих підсистем Єдиної судової інформаційно-телекомунікаційної системи. Затверджено рішенням Вищої ради правосуддя від 17.08.2021 № 1845/0/15-21.
+5. Сохацький М. Порівняльний аналіз інструментарію генерації документації у форматі API Blueprint при міграції з Oracle Apiary: кейс системи ЕСОЗ України. 2026. \url{https://github.com/ehealth-ua/esoz}
+6. ISO/IEC/IEEE 42010:2011. Systems and software engineering — Architecture description.
+7. API Blueprint Specification. \url{https://apiblueprint.org/documentation/specification.html}
+8. Funbox Blueprinter: Standalone API Blueprint renderer. \url{https://github.com/funboxteam/blueprinter}
+9. OpenSearch Documentation: Neural Search, Vector Search and Hybrid Scoring. \url{https://opensearch.org/docs/latest/}
+10. Synrc BPE: Business Process Engine in Erlang/Elixir. \url{https://github.com/synrc/bpe}

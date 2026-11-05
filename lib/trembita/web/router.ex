@@ -95,10 +95,10 @@ defmodule Trembita.Web.Router do
         files = Map.get(conn.body_params, "files", [])
         updated_attachments = case_data.attachments ++ files
 
-        Trembita.ETSCache.put_case(case_id, %{case_data |
+        Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
           attachments: updated_attachments,
           status: "ATTACHED"
-        })
+        }))
 
         if proc_id = Map.get(case_data, :bpe_proc_id) do
           _ = Trembita.Workflow.CaseProcess.advance(proc_id)
@@ -134,7 +134,7 @@ defmodule Trembita.Web.Router do
         eligible? = target_article? and rnokpp_valid? and citizenship_ua? and adult? and court_pilot_active?
 
         if eligible? do
-          Trembita.ETSCache.put_case(case_id, %{case_data | status: "TRIAGE_PASSED"})
+          Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{status: "TRIAGE_PASSED"}))
           if proc_id = Map.get(case_data, :bpe_proc_id) do
             _ = Trembita.Workflow.CaseProcess.advance(proc_id)
           end
@@ -152,7 +152,7 @@ defmodule Trembita.Web.Router do
           })
         else
           # Альтернативний потік 5
-          Trembita.ETSCache.put_case(case_id, %{case_data | status: "GENERAL_PROCEDURE"})
+          Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{status: "GENERAL_PROCEDURE"}))
           send_json(conn, 422, %{
             eligible: false,
             reason_code: if(!rnokpp_valid?, do: "MISSING_RNOKPP", else: "CRITERIA_MISMATCH"),
@@ -254,10 +254,10 @@ defmodule Trembita.Web.Router do
         delivery_id = UUID.generate()
         {:ok, deadline_at} = Trembita.ETSCache.set_timer(case_id, :diia_statement, 5)
 
-        Trembita.ETSCache.put_case(case_id, %{case_data |
+        Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
           status: "NOTIFICATION_SENT",
           diia_delivery_id: delivery_id
-        })
+        }))
 
         if proc_id = Map.get(case_data, :bpe_proc_id) do
           _ = Trembita.Workflow.CaseProcess.advance(proc_id)
@@ -322,10 +322,10 @@ defmodule Trembita.Web.Router do
     case Trembita.ETSCache.get_case(case_id) do
       {:ok, case_data} ->
         reason = conn.body_params["reason"] || "USER_DECLINED"
-        Trembita.ETSCache.put_case(case_id, %{case_data |
+        Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
           status: "GENERAL_PROCEDURE",
           refusal_reason: reason
-        })
+        }))
 
         send_json(conn, 200, %{status: "OK", timestamp: DateTime.utc_now()})
 
@@ -366,10 +366,10 @@ defmodule Trembita.Web.Router do
         case action do
           "REJECT" ->
             reason = conn.body_params["rejection_reason"] || "Мотивована відмова судді"
-            Trembita.ETSCache.put_case(case_id, %{case_data |
+            Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
               status: "DECISION_REJECTED",
               rejection_reason: reason
-            })
+            }))
 
             # Запис знеособленої метрики для оцінки ШІ
             Trembita.ETSCache.record_ai_feedback(%{
@@ -389,11 +389,11 @@ defmodule Trembita.Web.Router do
 
           act when act in ["SIGN_AS_IS", "EDIT_AND_SIGN"] ->
             final_text = conn.body_params["edited_text"] || case_data.draft_decision.circumstances
-            Trembita.ETSCache.put_case(case_id, %{case_data |
+            Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
               status: "DECISION_ADOPTED",
               final_decision: final_text,
               decision_id: decision_id
-            })
+            }))
 
             Trembita.ETSCache.record_ai_feedback(%{
               article: to_string(case_data.article),
@@ -452,10 +452,10 @@ defmodule Trembita.Web.Router do
 
     case Trembita.ETSCache.get_case(case_id) do
       {:ok, case_data} ->
-        Trembita.ETSCache.put_case(case_id, %{case_data |
+        Trembita.ETSCache.put_case(case_id, Map.merge(case_data, %{
           status: "EXECUTED_PAID",
           payment_info: conn.body_params
-        })
+        }))
 
         send_json(conn, 200, %{status: "OK", timestamp: DateTime.utc_now()})
 

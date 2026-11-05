@@ -1,0 +1,432 @@
+FORMAT: 1A
+HOST: https://api.court.gov.ua/api/v1
+
+# ЄСІКС AI eCourt & Trembita API
+
+Документація програмних інтерфейсів електронної взаємодії підсистеми інтелектуального опрацювання справ про адміністративні правопорушення у сфері безпеки дорожнього руху (ст. 122(4), 124, 126 ч.3,5, 130 КУпАП) засобами системи «Трембіта», підсистеми діловодства Д-3, Порталу Дія, Модуля ШІ ЄСІКС та ЄДРСР.
+
+# Group Шлюз Трембіта та ІПНП
+
+## Протокол Нацполіції [/trembita/ipnp/protocols]
+
+### Реєстрація протоколу з ІПНП [POST]
+
+Прийом структурованих відомостей протоколу про адміністративне правопорушення з Інформаційного порталу Нацполіції через захищений шлюз системи електронної взаємодії «Трембіта» (SEVDEIR/X-Road).
+
++ Headers
+
+        X-Road-Client: SEVDEIR/GOV/34614292/90_ElectronicCourt_prod
+        X-Road-Service: SEVDEIR/GOV/26255795/16_EDRSR_prod
+        X-Road-UserId: UA12345678
+        X-Road-Id: 4a2b9f3d-51a1-4322-92fe-b58f844b2f1e
+        Content-Type: application/json
+
++ Request (application/json)
+
+        {
+            "protocol_series": "ВАБ",
+            "protocol_number": "123456",
+            "violation_datetime": "2026-11-04T10:15:00+02:00",
+            "article": "124",
+            "part": null,
+            "police_department_code": "PATROL_KYIV_01",
+            "court_code": "2604",
+            "offender": {
+                "full_name": "Шевченко Петро Олексійович",
+                "birth_date": "1995-05-12",
+                "rnokpp": "3123456789",
+                "citizenship": "Україна",
+                "address": "м. Київ, вул. Хрещатик, 10, кв. 5"
+            }
+        }
+
++ Response 201 (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "case_number": "757/12345/26-п",
+            "d3_docket_id": "D3-2026-98124",
+            "status": "REGISTERED",
+            "created_at": "2026-11-05T10:00:00Z"
+        }
+
++ Response 400 (application/json)
+
+        {
+            "error_code": "VALIDATION_FAILED",
+            "message": "Відсутнє обов'язкове поле: protocol_series (Альтернативний потік 1)"
+        }
+
++ Response 409 (application/json)
+
+        {
+            "status": "DUPLICATE",
+            "existing_case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "message": "Відомості з протоколу серії ВАБ № 123456 вже надійшли раніше (Альтернативний потік 2)"
+        }
+
+# Group Канцелярія суду та Діловодство Д-3
+
+## Матеріали справи [/cases/{case_id}/attachments]
+
++ Parameters
+    + case_id: `92499c46-4c61-ac9d-6d8d-749616c996e5` (string) - Унікальний ідентифікатор судової справи
+
+### Долучення сканованих матеріалів [POST]
+
+Завантаження та долучення працівником канцелярії суду сканованих паперових документів (протокол-чек, схема ДТП, письмові пояснення) до облікової картки справи в Д-3.
+
++ Request (application/json)
+
+        {
+            "files": [
+                {
+                    "file_name": "scan_protocol_receipt.pdf",
+                    "document_type": "PROTOCOL_RECEIPT",
+                    "content_base64": "JVBERi0xLjQK..."
+                },
+                {
+                    "file_name": "scheme_dtp.pdf",
+                    "document_type": "ACCIDENT_SCHEME",
+                    "content_base64": "JVBERi0xLjQK..."
+                }
+            ]
+        }
+
++ Response 200 (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "attached_count": 2,
+            "status": "ATTACHED"
+        }
+
++ Response 404 (application/json)
+
+        {
+            "error_code": "CASE_NOT_FOUND",
+            "message": "Справу не знайдено в підсистемі Д-3"
+        }
+
+# Group Ядро ЄСІКС / Автоматизований Відбір
+
+## Автоматизований Triage [/cases/{case_id}/triage]
+
++ Parameters
+    + case_id: `92499c46-4c61-ac9d-6d8d-749616c996e5` (string) - Унікальний ідентифікатор судової справи
+
+### Перевірка критеріїв експериментального проєкту [POST]
+
+Автоматична перевірка відповідності справи технічним критеріям пілоту: статті 122(4), 124, 126, 130 КУпАП, верифікований РНОКПП, громадянство України, досягнення 18-річного віку та включення суду до переліку пілотних.
+
++ Request (application/json)
+
+        {}
+
++ Response 200 (application/json)
+
+        {
+            "eligible": true,
+            "criteria_checks": {
+                "target_article_valid": true,
+                "rnokpp_present": true,
+                "citizenship_ua": true,
+                "adult_at_offense": true,
+                "court_pilot_active": true
+            },
+            "next_action": "AI_PROCESSING_TRIGGERED"
+        }
+
++ Response 422 (application/json)
+
+        {
+            "eligible": false,
+            "reason_code": "MISSING_RNOKPP",
+            "description": "Справа не відповідає критеріям автоматизованого відбору, передано на загальний розгляд (Альтернативний потік 5)",
+            "fallback_action": "GENERAL_LEGAL_PROCEDURE"
+        }
+
+# Group Модуль ШІ ЄСІКС
+
+## Конвеєр ШІ [/ai/process]
+
+### Ініціація розпізнавання та синтезу рішення [POST]
+
+Запуск конвеєра ШІ: розпізнавання тексту сканів (OCR), оцінка метрики чіткості, векторний пошук аналогічних рішень в ЄДРСР через OpenSearch та генерація проєкту постанови суду.
+
++ Request (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5"
+        }
+
++ Response 202 (application/json)
+
+        {
+            "job_id": "cbef6cae-b211-501f-6ec3-a11b1a8561a3",
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "status": "QUEUED"
+        }
+
+## Статус опрацювання ШІ [/ai/status/{job_id}]
+
++ Parameters
+    + job_id: `cbef6cae-b211-501f-6ec3-a11b1a8561a3` (string) - Ідентифікатор фонового завдання ШІ
+
+### Отримання проєкту постанови та судової практики [GET]
+
++ Response 200 (application/json)
+
+        {
+            "job_id": "cbef6cae-b211-501f-6ec3-a11b1a8561a3",
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "status": "COMPLETED",
+            "ocr_confidence_score": 0.94,
+            "ai_model_version": "ESICS-AI-KUPAP-v2.4",
+            "draft_decision": {
+                "court_name": "Печерський районний суд міста Києва",
+                "judge_name": "Іванов І. І.",
+                "intro": "Суддя Печерського районного суду міста Києва...",
+                "circumstances": "Особа вчинила правопорушення, передбачене статтею 124 КУпАП...",
+                "resolution": {
+                    "sanction_type": "FINE",
+                    "fine_amount_uah": 850.0,
+                    "court_fee_uah": 605.6,
+                    "revocation_months": null,
+                    "dismissal_ground": null
+                }
+            },
+            "jurisprudence_references": [
+                {
+                    "edrsr_cause_number": "757/18420/25-п",
+                    "judgment_date": "2025-09-18",
+                    "similarity_score": 0.94,
+                    "relevance_summary": "Порушення п. 13.1 ПДР (ст. 124 КУпАП), стягнення: штраф 850 грн та судовий збір"
+                }
+            ]
+        }
+
+# Group Інтеграція з Порталом Дія
+
+## Повідомлення особи [/diia/notifications]
+
+### Відправка повідомлення правопорушнику [POST]
+
+Формування та передача сповіщення у мобільний застосунок Дія з запуском 5-денного процесуального строку для подання заяви.
+
++ Request (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "rnokpp": "3123456789"
+        }
+
++ Response 200 (application/json)
+
+        {
+            "delivery_id": "119e0783-6f81-4fe6-a67b-f9d2d0985cae",
+            "delivered_at": "2026-11-05T10:15:00Z",
+            "deadline_at": "2026-11-10T10:15:00Z"
+        }
+
+## Підписана заява особи [/diia/statements]
+
+### Прийом заяви з Дія.Підписом [POST]
+
+Отримання заяви про згоду з обставинами правопорушення та розгляд справи без участі особи, підписаної віддаленим КЕП «Дія.Підпис». Запуск 15-денного строку для судді.
+
++ Request (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "case_number": "757/12345/26-п",
+            "rnokpp": "3123456789",
+            "agreement_with_circumstances": true,
+            "consent_for_absence_trial": true,
+            "diia_signature_cms_base64": "MIAGCSqGSIb3DQEHAqCAMIACAQExDzANBglghkgBZQMEAgEFADCABgkqhkiG9w0BBwE..."
+        }
+
++ Response 200 (application/json)
+
+        {
+            "status": "STATEMENT_ACCEPTED",
+            "judge_notification_sent": true,
+            "judicial_timer_days": 15
+        }
+
+## Відмова від подання заяви [/diia/refusals]
+
+### Фіксація відмови або спливу строку [POST]
+
++ Request (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "reason": "USER_DECLINED"
+        }
+
++ Response 200 (application/json)
+
+        {
+            "status": "OK",
+            "timestamp": "2026-11-05T10:30:00Z"
+        }
+
+# Group Робоче місце судді
+
+## Облікова картка судді [/cases/{case_id}]
+
++ Parameters
+    + case_id: `92499c46-4c61-ac9d-6d8d-749616c996e5` (string) - Унікальний ідентифікатор справи
+
+### Перегляд повного досьє матеріалів [GET]
+
++ Response 200 (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "case_number": "757/12345/26-п",
+            "status": "STATEMENT_ACCEPTED",
+            "protocol": {
+                "article": "124",
+                "protocol_series": "ВАБ",
+                "protocol_number": "123456"
+            },
+            "statement": {
+                "agreement_with_circumstances": true,
+                "consent_for_absence_trial": true
+            },
+            "draft_decision": {
+                "resolution": {
+                    "fine_amount_uah": 850.0,
+                    "court_fee_uah": 605.6
+                }
+            },
+            "relevant_practice": [
+                {
+                    "edrsr_cause_number": "757/18420/25-п",
+                    "similarity_score": 0.94
+                }
+            ]
+        }
+
+## Процесуальне рішення судді [/cases/{case_id}/decision]
+
++ Parameters
+    + case_id: `92499c46-4c61-ac9d-6d8d-749616c996e5` (string) - Унікальний ідентифікатор справи
+
+### Ухвалення та підписання постанови КЕП [POST]
+
+Фіксація дії судді: підписати без змін (`SIGN_AS_IS`), відредагувати мотивувальну частину або розмір штрафу (`EDIT_AND_SIGN`), або відхилити проєкт (`REJECT`).
+
++ Request (application/json)
+
+        {
+            "action": "SIGN_AS_IS",
+            "judge_qes_cms_base64": "MIAGCSqGSIb3DQEHAqCAMIACAQExDzANBglghkgBZQMEAgEFADCABgkqhkiG9w0BBwE..."
+        }
+
++ Response 200 (application/json)
+
+        {
+            "decision_id": "b9612fe8-7901-44ac-9703-a26b67fe1901",
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "action_recorded": "SIGN_AS_IS",
+            "edrsr_dispatch_status": "PENDING",
+            "police_dispatch_status": "PENDING",
+            "diia_dispatch_status": "PENDING"
+        }
+
+# Group Виконання та Реєстри
+
+## Шлюз Трембіта до ІПНП [/trembita/ipnp/decisions]
+
+### Передача судового рішення Нацполіції [POST]
+
++ Request (application/json)
+
+        {
+            "case_number": "757/12345/26-п",
+            "protocol_series": "ВАБ",
+            "protocol_number": "123456",
+            "decision_date": "2026-11-05",
+            "sanction": {
+                "fine_amount_uah": 850.0,
+                "license_revocation_months": null
+            },
+            "signed_pdf_base64": "JVBERi0xLjQK..."
+        }
+
++ Response 200 (application/json)
+
+        {
+            "status": "OK",
+            "timestamp": "2026-11-05T10:45:00Z"
+        }
+
+## Внесення до ЄДРСР [/edrsr/publish]
+
+### Реєстрація рішення в Реєстрі [POST]
+
++ Request (application/json)
+
+        {
+            "case_number": "757/12345/26-п",
+            "court_code": "2604",
+            "decision_date": "2026-11-05",
+            "full_text_xml": "<decision>...</decision>",
+            "signature_base64": "MIAGCSqGSIb3DQEHAq..."
+        }
+
++ Response 200 (application/json)
+
+        {
+            "edrsr_id": "EDRSR-2026-981024",
+            "registration_number": "REG-44129",
+            "registered_at": "2026-11-05T10:46:00Z"
+        }
+
+## Сплата штрафу через Дію [/diia/payments]
+
+### Фіксація сплати штрафу правопорушником [POST]
+
++ Request (application/json)
+
+        {
+            "case_id": "92499c46-4c61-ac9d-6d8d-749616c996e5",
+            "transaction_id": "TRX-77721",
+            "amount_paid": 850.0,
+            "paid_at": "2026-11-05T12:00:00Z",
+            "payment_system": "DIIA_PAY"
+        }
+
++ Response 200 (application/json)
+
+        {
+            "status": "OK",
+            "timestamp": "2026-11-05T12:00:05Z"
+        }
+
+# Group Моніторинг та Оцінка якості ШІ
+
+## Датасет оцінки ШІ [/ai/feedback]
+
+### Фіксація знеособленої метрики розгляду справи [POST]
+
+Збереження статистичного запису без персональних даних (відхилення, дельта редагувань тексту суддею, версія моделі ШІ) для оцінювання точності та донавчання моделей.
+
++ Request (application/json)
+
+        {
+            "article": "124",
+            "judge_action": "SIGN_AS_IS",
+            "edit_distance_ratio": 0.0,
+            "ai_model_version": "ESICS-AI-KUPAP-v2.4"
+        }
+
++ Response 201 (application/json)
+
+        {
+            "status": "OK",
+            "timestamp": "2026-11-05T12:05:00Z"
+        }

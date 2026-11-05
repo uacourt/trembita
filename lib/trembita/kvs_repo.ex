@@ -26,3 +26,4 @@ defmodule Trembita.KVSRepo do
     :ok
   end
 end
+

@@ -50,3 +50,4 @@ defmodule Trembita.Workflow.CaseProcess do
     result(state: state)
   end
 end
+

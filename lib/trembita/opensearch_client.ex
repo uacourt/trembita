@@ -68,3 +68,4 @@ defmodule Trembita.OpenSearchClient do
     ]
   end
 end
+
