@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Definitions_eCourt" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="ecourt_process" name="ЄСІКС AI eCourt Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_Protocol" name="Protocol Received from Police">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_Protocol" targetRef="Activity_Attachments" />
+    <bpmn:task id="Activity_Attachments" name="Court Clerk Attachments">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_Attachments" targetRef="Activity_Triage" />
+    <bpmn:task id="Activity_Triage" name="Automated Triage Screening">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Activity_Triage" targetRef="Activity_AIProcess" />
+    <bpmn:serviceTask id="Activity_AIProcess" name="AI OCR and Decision Drafting">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Activity_AIProcess" targetRef="Activity_DiiaNotification" />
+    <bpmn:task id="Activity_DiiaNotification" name="Send Diia Notification">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Activity_DiiaNotification" targetRef="Activity_DiiaStatement" />
+    <bpmn:userTask id="Activity_DiiaStatement" name="Receive Signed Diia Statement">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_6" sourceRef="Activity_DiiaStatement" targetRef="Activity_JudicialReview" />
+    <bpmn:userTask id="Activity_JudicialReview" name="Judge Case Review">
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_7" sourceRef="Activity_JudicialReview" targetRef="Activity_Execution" />
+    <bpmn:serviceTask id="Activity_Execution" name="Publish EDRSR and Trembita Police Dispatch">
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_8" sourceRef="Activity_Execution" targetRef="EndEvent_Resolved" />
+    <bpmn:endEvent id="EndEvent_Resolved" name="Case Completed">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>
